@@ -1,0 +1,25 @@
+name: Publish to JSR
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+  id-token: write   # Required for JSR OIDC publishing (no token needed)
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: "2.x"
+
+      # Publishes the version declared in deno.json to jsr.io/@chalie/interface-sdk.
+      # The version in deno.json must match the git tag. Update deno.json before tagging.
+      - name: Publish to JSR
+        run: deno publish

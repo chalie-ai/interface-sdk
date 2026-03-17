@@ -1,0 +1,15 @@
+{
+  "name": "@chalie/interface-sdk",
+  "version": "1.0.0",
+  "exports": "./mod.ts",
+
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true
+  },
+
+  "publish": {
+    "include": ["mod.ts", "src/**/*.ts", "LICENSE", "README.md"]
+  }
+}

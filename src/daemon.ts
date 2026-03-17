@@ -1,0 +1,143 @@
+/**
+ * createDaemon() — wires up the HTTP server, poll scheduler, and gateway client.
+ * @module
+ */
+
+import { _setGateway } from "./gateway.ts";
+import type { DaemonConfig } from "./types.ts";
+
+// ── Interval helpers ──────────────────────────────────────────────────────────
+
+/** Convert seconds to milliseconds for use in Poll.every. */
+export function seconds(n: number): number { return n * 1_000; }
+/** Convert minutes to milliseconds for use in Poll.every. */
+export function minutes(n: number): number { return n * 60_000; }
+/** Convert hours to milliseconds for use in Poll.every. */
+export function hours(n: number): number { return n * 3_600_000; }
+/** Convert days to milliseconds for use in Poll.every. */
+export function days(n: number): number { return n * 86_400_000; }
+
+// ── CLI args ──────────────────────────────────────────────────────────────────
+
+function parseArgs(): { gateway: string; port: number; dataDir: string } {
+  const args: Record<string, string> = {};
+  for (const arg of Deno.args) {
+    const [key, value] = arg.replace(/^--/, "").split("=");
+    if (key && value !== undefined) args[key] = value;
+  }
+  const gateway = args["gateway"];
+  if (!gateway) {
+    console.error("[fatal] --gateway is required");
+    Deno.exit(1);
+  }
+  return {
+    gateway: gateway.replace(/\/$/, ""),
+    port: parseInt(args["port"] ?? "4001", 10),
+    dataDir: args["data-dir"] ?? "./data",
+  };
+}
+
+// ── Poll scheduler ────────────────────────────────────────────────────────────
+
+function startPolls(config: DaemonConfig): void {
+  for (const poll of config.polls ?? []) {
+    const run = async () => {
+      try { await poll.run(); }
+      catch (e) { console.warn(`[poll:${poll.name}] ${(e as Error).message}`); }
+    };
+    run();
+    setInterval(run, poll.every);
+    console.log(`[poll] '${poll.name}' every ${poll.every / 1000}s`);
+  }
+}
+
+// ── HTTP server ───────────────────────────────────────────────────────────────
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+async function handleRequest(req: Request, config: DaemonConfig): Promise<Response> {
+  const path = new URL(req.url).pathname;
+
+  if (path === "/health") {
+    return json({ status: "ok", name: config.name, version: config.version });
+  }
+
+  if (path === "/capabilities") {
+    return json(config.capabilities);
+  }
+
+  if (path === "/meta") {
+    return json({
+      name: config.name,
+      version: config.version,
+      description: config.description,
+      author: config.author ?? "",
+      scopes: config.scopes,
+    });
+  }
+
+  if (path === "/execute" && req.method === "POST") {
+    let body: { capability?: string; params?: Record<string, unknown> };
+    try { body = await req.json(); }
+    catch { return json({ text: null, data: null, error: "Invalid JSON body" }); }
+
+    try {
+      const result = await config.executeCommand(
+        body.capability ?? "",
+        body.params ?? {},
+      );
+      return json({ text: result.text ?? null, data: result.data ?? null, error: result.error ?? null });
+    } catch (e) {
+      return json({ text: null, data: null, error: `Unhandled error: ${(e as Error).message}` });
+    }
+  }
+
+  if (path === "/" || path === "/index.html") {
+    const fragment = await config.renderInterface();
+    return new Response(fragment, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+  }
+
+  return new Response("Not found", { status: 404 });
+}
+
+// ── createDaemon ──────────────────────────────────────────────────────────────
+
+/**
+ * Start the interface daemon.
+ *
+ * Parses `--gateway`, `--port`, and `--data-dir` from process arguments,
+ * initialises the gateway client, starts all declared polls, and serves
+ * the Chalie interface contract over HTTP.
+ *
+ * Call this once at the bottom of your daemon file:
+ *
+ * ```ts
+ * createDaemon({
+ *   name: "Weather",
+ *   version: "1.0.0",
+ *   description: "Current conditions and forecasts",
+ *   scopes: { context: { [CONSTANTS.SCOPES.LOCATION]: "Weather for your city" } },
+ *   capabilities: [...],
+ *   polls: [{ name: "hourly", every: hours(1), async run() { ... } }],
+ *   async executeCommand(capability, params) { ... },
+ *   async renderInterface() { return `<div>...</div>`; },
+ * });
+ * ```
+ */
+export async function createDaemon(config: DaemonConfig): Promise<void> {
+  const { gateway, port, dataDir } = parseArgs();
+
+  _setGateway(gateway);
+
+  await Deno.mkdir(dataDir, { recursive: true });
+
+  startPolls(config);
+
+  console.log(`[${config.name}] v${config.version} on port ${port}`);
+  Deno.serve({ port }, (req) => handleRequest(req, config));
+}
