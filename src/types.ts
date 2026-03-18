@@ -70,8 +70,23 @@ export interface DaemonConfig {
     params: Record<string, unknown>,
   ) => Promise<CommandResult>;
   /**
-   * Return an HTML fragment (single root <div>) shown when the user opens
-   * your interface. Called server-side — fetch data here and bake it in.
+   * Return an HTML fragment shown when the user opens your interface.
+   * Called server-side — fetch data here and bake it in.
+   *
+   * The SDK automatically injects a `chalie` client-side helper before your
+   * HTML. Use it in onclick handlers and inline scripts:
+   *
+   * ```html
+   * <button onclick="chalie.execute('greet', {name: 'World'}).then(r => alert(r.text))">
+   *   Greet
+   * </button>
+   * <script>
+   *   // chalie.execute(capability, params) → Promise<{text, data, error}>
+   *   // chalie.signal(type, content)       → Promise<boolean>
+   *   // chalie.context()                   → Promise<object>
+   *   // chalie.gwBase                      → gateway base URL string
+   * </script>
+   * ```
    */
   renderInterface: () => Promise<string>;
 }

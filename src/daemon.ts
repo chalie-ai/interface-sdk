@@ -3,7 +3,7 @@
  * @module
  */
 
-import { _setGateway } from "./gateway.ts";
+import { _setGateway, _getGateway } from "./gateway.ts";
 import type { DaemonConfig } from "./types.ts";
 
 // ── Interval helpers ──────────────────────────────────────────────────────────
@@ -134,10 +134,74 @@ async function handleRequest(req: Request, config: DaemonConfig): Promise<Respon
 
   if (path === "/" || path === "/index.html") {
     const fragment = await config.renderInterface();
-    return new Response(fragment, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+    const html = _clientScript() + fragment;
+    return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
 
   return new Response("Not found", { status: 404 });
+}
+
+// ── Client-side helper injection ──────────────────────────────────────────────
+
+/**
+ * Returns a <script> tag that defines `window.chalie` — a tiny client-side
+ * helper that daemon UIs can use to call gateway routes without knowing
+ * their own interface ID or gateway URL.
+ *
+ * The gateway's render proxy may override CHALIE_GW_BASE (it injects its
+ * own <script> before this one). If already set, we use it. Otherwise we
+ * extract the gateway path from the server-side gateway URL.
+ */
+function _clientScript(): string {
+  // Extract the path portion of the gateway URL (e.g. "/gw/{id}")
+  // so the browser can make relative requests to the same origin.
+  const gw = _getGateway();
+  let gwPath: string;
+  try {
+    gwPath = new URL(gw).pathname;
+  } catch {
+    gwPath = gw; // already a path
+  }
+
+  return `<script>
+(function(){
+  var base = window.CHALIE_GW_BASE || "${gwPath}";
+  var _json = {"Content-Type":"application/json"};
+
+  window.chalie = {
+    gwBase: base,
+
+    execute: function(capability, params) {
+      return fetch(base + "/execute", {
+        method: "POST",
+        headers: _json,
+        body: JSON.stringify({capability: capability, params: params || {}})
+      }).then(function(r){ return r.json(); });
+    },
+
+    signal: function(type, content, energy, metadata) {
+      return fetch(base + "/signals", {
+        method: "POST",
+        headers: _json,
+        body: JSON.stringify({
+          signal_type: type,
+          content: typeof content === "string" ? content : JSON.stringify(content),
+          activation_energy: energy || 0.5,
+          metadata: metadata || null
+        })
+      }).then(function(r){ return r.status === 202; })
+        .catch(function(){ return false; });
+    },
+
+    context: function() {
+      return fetch(base + "/context")
+        .then(function(r){ return r.json(); })
+        .catch(function(){ return {}; });
+    }
+  };
+})();
+</script>
+`;
 }
 
 // ── createDaemon ──────────────────────────────────────────────────────────────

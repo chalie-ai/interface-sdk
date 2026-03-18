@@ -14,6 +14,11 @@ export function _setGateway(url: string): void {
   _gateway = url.replace(/\/$/, "");
 }
 
+/** @internal Used by daemon.ts to inject gateway URL into rendered HTML. */
+export function _getGateway(): string {
+  return _gateway;
+}
+
 /**
  * Push a signal to Chalie's world state.
  *
