@@ -51,6 +51,46 @@ function startPolls(config: DaemonConfig): void {
   }
 }
 
+// ── Gateway registration ─────────────────────────────────────────────────────
+
+async function registerWithGateway(
+  gatewayBase: string,
+  port: number,
+  config: DaemonConfig,
+): Promise<string> {
+  const body = JSON.stringify({
+    name: config.name,
+    version: config.version,
+    description: config.description,
+    author: config.author ?? "",
+    scopes: config.scopes,
+    port,
+  });
+
+  for (let attempt = 1; attempt <= 10; attempt++) {
+    try {
+      const resp = await fetch(`${gatewayBase}/register`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (resp.ok) {
+        const data = await resp.json() as { gateway_url: string; interface_id: string; status: string };
+        console.log(`[register] ${data.status} → ${data.gateway_url}`);
+        return data.gateway_url;
+      }
+      const err = await resp.text();
+      console.warn(`[register] attempt ${attempt} failed: ${resp.status} ${err}`);
+    } catch (e) {
+      console.warn(`[register] attempt ${attempt}: ${(e as Error).message}`);
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+
+  console.error("[register] failed after 10 attempts — falling back to base gateway URL");
+  return gatewayBase;
+}
+
 // ── HTTP server ───────────────────────────────────────────────────────────────
 
 function json(data: unknown, status = 200): Response {
@@ -132,9 +172,12 @@ async function handleRequest(req: Request, config: DaemonConfig): Promise<Respon
 export async function createDaemon(config: DaemonConfig): Promise<void> {
   const { gateway, port, dataDir } = parseArgs();
 
-  _setGateway(gateway);
-
   await Deno.mkdir(dataDir, { recursive: true });
+
+  // Register with the dashboard gateway — returns the full gateway URL
+  // (e.g. http://localhost:3000/gw/{interface_id})
+  const gatewayUrl = await registerWithGateway(gateway, port, config);
+  _setGateway(gatewayUrl);
 
   startPolls(config);
 
