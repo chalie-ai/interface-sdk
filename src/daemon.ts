@@ -26,7 +26,7 @@ function parseArgs(): { gateway: string; port: number; dataDir: string } {
     if (key && value !== undefined) args[key] = value;
   }
   return {
-    gateway: (args["gateway"] ?? "http://localhost:3000").replace(/\/$/, ""),
+    gateway: (args["gateway"] ?? "http://localhost:8081").replace(/\/$/, ""),
     port: parseInt(args["port"] ?? "4001", 10),
     dataDir: args["data-dir"] ?? "./data",
   };
