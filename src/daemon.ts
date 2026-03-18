@@ -25,13 +25,8 @@ function parseArgs(): { gateway: string; port: number; dataDir: string } {
     const [key, value] = arg.replace(/^--/, "").split("=");
     if (key && value !== undefined) args[key] = value;
   }
-  const gateway = args["gateway"];
-  if (!gateway) {
-    console.error("[fatal] --gateway is required");
-    Deno.exit(1);
-  }
   return {
-    gateway: gateway.replace(/\/$/, ""),
+    gateway: (args["gateway"] ?? "http://localhost:3000").replace(/\/$/, ""),
     port: parseInt(args["port"] ?? "4001", 10),
     dataDir: args["data-dir"] ?? "./data",
   };
