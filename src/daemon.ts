@@ -126,15 +126,30 @@ async function handleRequest(req: Request, config: DaemonConfig): Promise<Respon
         body.capability ?? "",
         body.params ?? {},
       );
-      return json({ text: result.text ?? null, data: result.data ?? null, error: result.error ?? null });
+      // Pass through all fields — blocks, openUrl, html, etc.
+      return json({
+        text: result.text ?? null,
+        data: result.data ?? null,
+        error: result.error ?? null,
+        ...(result.blocks ? { blocks: result.blocks } : {}),
+        ...(result.openUrl ? { openUrl: result.openUrl } : {}),
+        ...(result.html ? { html: result.html } : {}),
+      });
     } catch (e) {
       return json({ text: null, data: null, error: `Unhandled error: ${(e as Error).message}` });
     }
   }
 
-  if (path === "/" || path === "/index.html") {
-    const fragment = await config.renderInterface();
-    const html = _clientScript() + fragment;
+  if (path === "/render" || path === "/" || path === "/index.html") {
+    const result = await config.renderInterface();
+
+    // Block protocol (v1.2+): renderInterface returns Block[]
+    if (Array.isArray(result)) {
+      return json({ blocks: result });
+    }
+
+    // Legacy: renderInterface returns HTML string
+    const html = _clientScript() + result;
     return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
 

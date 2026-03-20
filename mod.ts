@@ -22,6 +22,7 @@ export type {
   ScopeReturnType,
 } from "./src/constants.ts";
 export type {
+  Block,
   Capability,
   Parameter,
   Scopes,

@@ -28,11 +28,26 @@ export interface Scopes {
   messages?: Record<string, string>;
 }
 
+/**
+ * A typed UI block. Daemons build these via the `blocks` module.
+ * The frontend renders them natively — no HTML, CSS, or JS from daemons.
+ */
+export interface Block {
+  type: string;
+  [key: string]: unknown;
+}
+
 /** Return value from executeCommand(). Always return HTTP 200 — never throw. */
 export interface CommandResult {
   text?: string | null;
   data?: unknown;
   error?: string | null;
+  /** Block array — if present, the frontend renders these in the overlay. */
+  blocks?: Block[];
+  /** URL to open in a new browser tab (e.g. OAuth flow). */
+  openUrl?: string;
+  /** @deprecated Use blocks instead. Raw HTML output. */
+  html?: string | null;
 }
 
 /** A scheduled background job. */
@@ -70,23 +85,28 @@ export interface DaemonConfig {
     params: Record<string, unknown>,
   ) => Promise<CommandResult>;
   /**
-   * Return an HTML fragment shown when the user opens your interface.
-   * Called server-side — fetch data here and bake it in.
+   * Return the UI shown when the user opens your interface.
    *
-   * The SDK automatically injects a `chalie` client-side helper before your
-   * HTML. Use it in onclick handlers and inline scripts:
+   * **Preferred (v1.2+):** Return `Block[]` — the frontend renders blocks
+   * natively using the Radiant design system. Build blocks with the SDK's
+   * block builder functions:
    *
-   * ```html
-   * <button onclick="chalie.execute('greet', {name: 'World'}).then(r => alert(r.text))">
-   *   Greet
-   * </button>
-   * <script>
-   *   // chalie.execute(capability, params) → Promise<{text, data, error}>
-   *   // chalie.signal(type, content)       → Promise<boolean>
-   *   // chalie.context()                   → Promise<object>
-   *   // chalie.gwBase                      → gateway base URL string
-   * </script>
+   * ```ts
+   * import { section, header, text, actions, button } from "jsr:@chalie/interface-sdk/blocks";
+   *
+   * renderInterface() {
+   *   return [
+   *     section([
+   *       header("My Interface", 2),
+   *       text("Status: connected", "plain"),
+   *       actions(button("Refresh", { execute: "refresh" })),
+   *     ]),
+   *   ];
+   * }
    * ```
+   *
+   * **Legacy:** Return an HTML string. The SDK injects a `chalie` client-side
+   * helper before your HTML. This path is deprecated — migrate to blocks.
    */
-  renderInterface: () => Promise<string>;
+  renderInterface: () => Promise<string> | Promise<Block[]> | string | Block[];
 }
